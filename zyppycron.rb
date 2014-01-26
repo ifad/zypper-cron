@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+#!/usr/bin/ruby
 
 #
 # Zypper patch reporter. Inspired by both apticron and porticron.
