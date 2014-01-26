@@ -10,6 +10,7 @@
 require 'nokogiri'
 require 'erubis'
 require 'ostruct'
+require 'open3'
 
 class XmlParser < OpenStruct
   def initialize(xml)
@@ -65,19 +66,48 @@ class Update < XmlParser
 
 end
 
+def run!(command, description)
+  Open3.popen3(*command) do |_, stdout, stderr, guard|
+    out = Thread.new { stdout.read }.value
+    err = Thread.new { stderr.read }.value
+
+    if guard.value.exitstatus == 0
+
+      if err.strip.size > 0
+        puts "#{command.join(' ')}: #{err}"
+      end
+      return out
+
+    else
+      puts "= #$hostname: Error while #{description}"
+      puts err
+      puts out
+      exit 1
+    end
+  end
+end
+
+# Main
+$hostname = `hostname -f`.chomp
+
+# Try refreshing the repositories
+run! ['zypper', 'ref'], 'refreshing repositories'
+
+# OK, get list of patches
+run! ['zypper', '-x', 'lp'], 'fetching patches list'
+
 source = File.popen('zypper -x lp').read
 updates = Nokogiri.parse(source).xpath('//update').map {|xml| Update.new(xml)}
 
 exit 0 if updates.size == 0
 
-hostname = `hostname -f`.chomp
 categories = updates.inject(Hash.new(0)) {|h, update| h[update.category] += 1; h}
 
 # Render
 puts Erubis::Eruby.new(DATA.read).result(binding)
 
 __END__
-= <%= hostname %>: <%= updates.size %> updates available =
+= <%= $hostname %>: <%= updates.size %> updates available =
 
 <% categories.each do |category, count| %>
   * <%= count %> <%= category %> updates
